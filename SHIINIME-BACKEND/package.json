@@ -1,0 +1,24 @@
+{
+  "name": "shiinime-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/local-dev.ts",
+    "build": "tsc --noEmit",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.1",
+    "dotenv": "^17.4.2",
+    "firebase-admin": "^13.2.0",
+    "hono": "^4.7.2",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vercel": "^41.4.1"
+  }
+}

@@ -1,34 +1,25 @@
-import axios, { AxiosError } from 'axios';
-import { env } from '../../config/env';
+import { AppError } from '../../utils/errors.js';
+import { config } from '../../utils/config.js';
 
-const client = axios.create({
-  baseURL: env.sankaBaseUrl,
-  timeout: 15000,
-  headers: {
-    Accept: 'application/json',
-  },
-});
-
-export const sankaClient = {
-  async get<T>(url: string, params?: Record<string, string | number>) {
+export class SankaClient {
+  async get(path: string): Promise<unknown> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), config.sankaTimeoutMs);
     try {
-      const response = await client.get<T>(url, { params });
-      return response.data;
+      const response = await fetch(`${config.sankaBaseUrl}${path}`, { signal: controller.signal, headers: { Accept: 'application/json' } });
+      if (!response.ok) {
+        const code = response.status === 404 ? 'NOT_FOUND' : response.status === 429 ? 'PROVIDER_RATE_LIMIT' : 'PROVIDER_ERROR';
+        throw new AppError(code, `Sanka returned HTTP ${response.status}`, response.status === 404 ? 404 : 502);
+      }
+      return await response.json();
     } catch (error) {
-      const axiosError = error as AxiosError;
-      if (axiosError.response?.status === 404) {
-        throw Object.assign(new Error('Sanka resource not found'), { statusCode: 404, code: 'PROVIDER_NOT_FOUND' });
-      }
-      if (axiosError.response?.status === 429) {
-        throw Object.assign(new Error('Sanka rate limit reached'), { statusCode: 429, code: 'PROVIDER_RATE_LIMITED' });
-      }
-      if (axiosError.response?.status === 500) {
-        throw Object.assign(new Error('Sanka provider temporarily unavailable'), { statusCode: 502, code: 'PROVIDER_ERROR' });
-      }
-      if (axiosError.code === 'ECONNABORTED' || axiosError.code === 'ETIMEDOUT') {
-        throw Object.assign(new Error('Sanka provider request timeout'), { statusCode: 504, code: 'PROVIDER_TIMEOUT' });
-      }
-      throw Object.assign(new Error('Anime provider temporarily unavailable'), { statusCode: 502, code: 'PROVIDER_ERROR' });
+      if (error instanceof AppError) throw error;
+      if (error instanceof DOMException && error.name === 'AbortError') throw new AppError('PROVIDER_TIMEOUT', 'Sanka request timed out', 504);
+      throw new AppError('PROVIDER_ERROR', 'Sanka request failed', 502);
+    } finally {
+      clearTimeout(timeout);
     }
-  },
-};
+  }
+}
+
+export const sankaClient = new SankaClient();

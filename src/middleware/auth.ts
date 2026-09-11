@@ -1,42 +1,22 @@
-import type { NextFunction, Request, Response } from 'express';
-import { firebaseAdmin } from '../config/firebase';
-import { sendError } from './error';
+import type { MiddlewareHandler } from 'hono';
+import { getFirebaseAuth } from '../lib/firebase.js';
+import { config } from '../utils/config.js';
+import { AppError } from '../utils/errors.js';
 
-export interface AuthenticatedRequest extends Request {
-  user?: {
-    uid: string;
-    email?: string | null;
-    firebaseToken?: string;
-  };
-}
-
-export const requireAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+type AuthUser = { uid: string; email?: string; name?: string; picture?: string };
+export const requireAuth: MiddlewareHandler<{ Variables: { user: AuthUser } }> = async (c, next) => {
+  const header = c.req.header('Authorization');
+  if (config.mockAuth && process.env.NODE_ENV !== 'production') {
+    c.set('user', { uid: header?.startsWith('Bearer ') ? header.slice(7) : 'local-dev-user', email: 'local@example.com', name: 'Local Developer' });
+    await next(); return;
+  }
+  if (!header?.startsWith('Bearer ')) throw new AppError('UNAUTHORIZED', 'Authorization Bearer token is required', 401);
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return sendError(res, 401, 'UNAUTHORIZED', 'Authorization header is required');
-    }
-
-    const token = authHeader.replace('Bearer ', '').trim();
-
-    if (process.env.USE_MOCK_AUTH === 'true') {
-      const mockUid = req.headers['x-user-uid'] as string | undefined;
-      if (!mockUid) {
-        return sendError(res, 401, 'UNAUTHORIZED', 'Mock auth requires x-user-uid header');
-      }
-
-      req.user = { uid: mockUid, email: `${mockUid}@mock.local`, firebaseToken: token };
-      return next();
-    }
-
-    const decodedToken = await firebaseAdmin.auth().verifyIdToken(token);
-    req.user = {
-      uid: decodedToken.uid,
-      email: decodedToken.email || null,
-      firebaseToken: token,
-    };
-    return next();
+    const decoded = await getFirebaseAuth().verifyIdToken(header.slice(7));
+    c.set('user', { uid: decoded.uid, email: decoded.email, name: decoded.name, picture: decoded.picture });
+    await next();
   } catch (error) {
-    return sendError(res, 401, 'INVALID_TOKEN', 'Invalid or expired Firebase token');
+    if (error instanceof AppError) throw error;
+    throw new AppError('UNAUTHORIZED', 'Firebase ID token is invalid or expired', 401);
   }
 };

@@ -1,6 +1,7 @@
-node_modules/
-dist/
+node_modules
+.vercel
 .env
-coverage/
-.vite/
-.DS_Store
+.env.*
+!.env.example
+dist
+*.log

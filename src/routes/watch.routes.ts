@@ -1,59 +1,19 @@
-import { Router } from 'express';
-import { z } from 'zod';
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
-import { sendError } from '../middleware/error';
-import { createWatchSession, getWatchSession, updateWatchHeartBeat } from '../services/watch.service';
+import { Hono } from 'hono';
+import { FieldValue } from 'firebase-admin/firestore';
+import { randomUUID } from 'node:crypto';
+import { requireAuth } from '../middleware/auth.js';
+import { getDb } from '../lib/firebase.js';
+import { addExp } from '../services/user.service.js';
+import { config } from '../utils/config.js';
+import { AppError } from '../utils/errors.js';
+import { completeSchema, heartbeatSchema, startWatchSchema } from '../utils/schemas.js';
+import { ok } from '../utils/response.js';
 
-const router = Router();
-
-const startWatchSchema = z.object({
-  animeId: z.string().min(1),
-  episodeId: z.string().min(1),
-  duration: z.number().positive(),
-});
-
-const heartbeatSchema = z.object({
-  sessionId: z.string().min(1),
-  position: z.number().nonnegative(),
-  duration: z.number().positive(),
-});
-
-router.post('/start', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = startWatchSchema.parse(req.body);
-    const started = await createWatchSession(req.user!.uid, payload.animeId, payload.episodeId, payload.duration);
-    res.status(201).json({ success: true, data: started });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return sendError(res, 400, 'VALIDATION_ERROR', 'Invalid watch payload');
-    }
-    return sendError(res, 500, 'WATCH_START_ERROR', 'Unable to start watch session');
-  }
-});
-
-router.post('/heartbeat', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = heartbeatSchema.parse(req.body);
-    const result = await updateWatchHeartBeat(req.user!.uid, payload.sessionId, payload.position, payload.duration);
-    res.json({ success: true, data: result });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return sendError(res, 400, 'VALIDATION_ERROR', 'Invalid heartbeat payload');
-    }
-    if ((error as any)?.code === 'NOT_FOUND') {
-      return sendError(res, 404, 'WATCH_SESSION_NOT_FOUND', 'Watch session not found');
-    }
-    if ((error as any)?.code === 'FORBIDDEN') {
-      return sendError(res, 403, 'WATCH_SESSION_FORBIDDEN', 'This session does not belong to the authenticated user');
-    }
-    if ((error as any)?.code === 'CONFLICT') {
-      return sendError(res, 409, 'WATCH_SESSION_INACTIVE', 'This watch session is not active');
-    }
-    if ((error as any)?.code === 'BAD_REQUEST') {
-      return sendError(res, 400, 'INVALID_POSITION', 'Watch position is invalid');
-    }
-    return sendError(res, 500, 'WATCH_HEARTBEAT_ERROR', 'Unable to process heartbeat');
-  }
-});
-
-export default router;
+export const watchRoutes = new Hono<{ Variables: { user: { uid: string } } }>();
+watchRoutes.use('*', requireAuth);
+const parse = async <T>(request: Request, schema: { safeParse: (value: unknown) => { success: true; data: T } | { success: false; error: { issues: Array<{ message: string }> } } }): Promise<T> => { const result = schema.safeParse(await request.json().catch(() => null)); if (!result.success) throw new AppError('VALIDATION_ERROR', result.error.issues[0]?.message ?? 'Invalid request body', 400); return result.data; };
+const sessionRef = (uid: string, id: string) => getDb().collection('watchSessions').doc(id);
+watchRoutes.post('/start', async (c) => { const body = await parse(c.req.raw, startWatchSchema); const sessionId = randomUUID(); await sessionRef(c.get('user').uid, sessionId).set({ sessionId, uid: c.get('user').uid, ...body, position: 0, active: true, expAwardedSeconds: 0, completed: false, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }); return ok(c, { sessionId }, 201); });
+watchRoutes.post('/heartbeat', async (c) => {
+  const body = await parse(c.req.raw, heartbeatSchema); const ref = sessionRef(c.get('user').uid, body.sessionId); const result = await getDb().runTransaction(async (tx) => { const snap = await tx.get(ref); if (!snap.exists) throw new AppError('NOT_FOUND', 'Watch session not found', 404); const session = snap.data() as { uid: string; active: boolean; position: number; duration: number; expAwardedSeconds: number; animeId: string; episodeId: string }; if (session.uid !== c.get('user').uid) throw new AppError('FORBIDDEN', 'Watch session does not belong to user', 403); if (!session.active) throw new AppError('VALIDATION_ERROR', 'Watch session is inactive', 400); if (body.position < session.position || body.position > body.duration || body.position - session.position > 300) throw new AppError('VALIDATION_ERROR', 'Invalid heartbeat position', 400); const watched = Math.floor(body.position); const newUnits = Math.floor(watched / config.heartbeatExpSeconds) - Math.floor(session.expAwardedSeconds / config.heartbeatExpSeconds); tx.update(ref, { position: body.position, duration: body.duration, expAwardedSeconds: Math.max(session.expAwardedSeconds, watched), updatedAt: FieldValue.serverTimestamp() }); tx.set(getDb().collection('users').doc(c.get('user').uid).collection('history').doc(session.episodeId), { animeId: session.animeId, episodeId: session.episodeId, lastPosition: body.position, duration: body.duration, progress: body.position / body.duration, completed: false, lastWatchedAt: FieldValue.serverTimestamp() }, { merge: true }); return { newUnits, position: body.position }; }); if (result.newUnits > 0) await addExp(c.get('user').uid, result.newUnits * config.heartbeatExpAmount, result.newUnits * config.heartbeatExpSeconds); return ok(c, result); });
+watchRoutes.post('/complete', async (c) => { const body = await parse(c.req.raw, completeSchema); const ref = sessionRef(c.get('user').uid, body.sessionId); const result = await getDb().runTransaction(async (tx) => { const snap = await tx.get(ref); if (!snap.exists) throw new AppError('NOT_FOUND', 'Watch session not found', 404); const session = snap.data() as { uid: string; position: number; duration: number; completed: boolean; episodeId: string; animeId: string }; if (session.uid !== c.get('user').uid) throw new AppError('FORBIDDEN', 'Watch session does not belong to user', 403); if (session.position / session.duration < config.completionThreshold) throw new AppError('VALIDATION_ERROR', 'Episode must be at least 80% watched', 400); if (session.completed) return { awarded: false }; tx.update(ref, { completed: true, active: false, updatedAt: FieldValue.serverTimestamp() }); tx.set(getDb().collection('users').doc(c.get('user').uid).collection('history').doc(session.episodeId), { animeId: session.animeId, episodeId: session.episodeId, lastPosition: session.position, duration: session.duration, progress: session.position / session.duration, completed: true, lastWatchedAt: FieldValue.serverTimestamp() }, { merge: true }); return { awarded: true }; }); if (result.awarded) await addExp(c.get('user').uid, config.completionExpAmount); return ok(c, result); });

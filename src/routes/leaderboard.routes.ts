@@ -1,27 +1,7 @@
-import { Router } from 'express';
-import { firebaseAdmin } from '../config/firebase';
-import { requireAuth } from '../middleware/auth';
-
-const router = Router();
-
-router.get('/', requireAuth, async (_req, res) => {
-  try {
-    const snapshot = await firebaseAdmin.firestore().collection('users').orderBy('exp', 'desc').limit(20).get();
-    const data = snapshot.docs.map((doc, index) => {
-      const user = doc.data();
-      return {
-        rank: index + 1,
-        displayName: user.displayName || 'Anonymous',
-        photoURL: user.photoURL || null,
-        level: user.level || 1,
-        exp: user.exp || 0,
-      };
-    });
-
-    res.json({ success: true, data });
-  } catch (error) {
-    res.status(500).json({ success: false, error: { code: 'LEADERBOARD_ERROR', message: 'Unable to load leaderboard' } });
-  }
-});
-
-export default router;
+import { Hono } from 'hono';
+import { getDb } from '../lib/firebase.js';
+import { requireAuth } from '../middleware/auth.js';
+import { ok } from '../utils/response.js';
+export const leaderboardRoutes = new Hono<{ Variables: { user: { uid: string } } }>();
+leaderboardRoutes.use('*', requireAuth);
+leaderboardRoutes.get('/', async (c) => { const docs = await getDb().collection('users').orderBy('exp', 'desc').limit(100).get(); return ok(c, docs.docs.map((doc, index) => { const user = doc.data(); return { rank: index + 1, displayName: user.displayName ?? null, photoURL: user.photoURL ?? null, level: user.level ?? 1, exp: user.exp ?? 0 }; })); });

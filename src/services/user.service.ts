@@ -1,72 +1,25 @@
-import { firebaseAdmin } from '../config/firebase';
+import { FieldValue } from 'firebase-admin/firestore';
+import { getDb } from '../lib/firebase.js';
+import { levelForExp } from './level.service.js';
+import type { User } from '../types/index.js';
 
-export interface UserProfile {
-  uid: string;
-  email?: string | null;
-  displayName?: string | null;
-  photoURL?: string | null;
-  level: number;
-  exp: number;
-  totalWatchSeconds: number;
-  createdAt: Date;
-  updatedAt: Date;
-  lastActiveAt: Date;
-}
-
-export const userCollection = () => firebaseAdmin.firestore().collection('users');
-
-export const ensureUserProfile = async (uid: string, email?: string | null, displayName?: string | null, photoURL?: string | null) => {
-  const ref = userCollection().doc(uid);
+export const userRef = (uid: string) => getDb().collection('users').doc(uid);
+export const ensureUser = async (claims: { uid: string; email?: string; name?: string; picture?: string }): Promise<User> => {
+  const ref = userRef(claims.uid);
   const snapshot = await ref.get();
-
-  if (!snapshot.exists) {
-    const now = new Date();
-    const profile: UserProfile = {
-      uid,
-      email: email || null,
-      displayName: displayName || null,
-      photoURL: photoURL || null,
-      level: 1,
-      exp: 0,
-      totalWatchSeconds: 0,
-      createdAt: now,
-      updatedAt: now,
-      lastActiveAt: now,
-    };
-    await ref.set(profile);
-    return profile;
-  }
-
-  const existing = snapshot.data() as Partial<UserProfile>;
-  const now = new Date();
-  const updates: Partial<UserProfile> = {
-    email: existing.email ?? email ?? null,
-    displayName: existing.displayName ?? displayName ?? null,
-    photoURL: existing.photoURL ?? photoURL ?? null,
-    updatedAt: now,
-    lastActiveAt: now,
-  };
-
-  if (Object.keys(updates).length > 0) {
-    await ref.update(updates);
-  }
-
-  return { ...existing, ...updates, uid } as UserProfile;
+  if (snapshot.exists) return snapshot.data() as User;
+  const now = FieldValue.serverTimestamp();
+  const user = { uid: claims.uid, email: claims.email ?? null, displayName: claims.name ?? null, photoURL: claims.picture ?? null, level: 1, exp: 0, totalWatchSeconds: 0, createdAt: now, updatedAt: now, lastActiveAt: now };
+  await ref.set(user);
+  return user as unknown as User;
 };
 
-export const getUserProfile = async (uid: string) => {
-  const snapshot = await userCollection().doc(uid).get();
-  if (!snapshot.exists) return null;
-  return snapshot.data() as UserProfile;
-};
-
-export const updateUserProfile = async (uid: string, payload: Partial<Pick<UserProfile, 'displayName' | 'photoURL'>>) => {
-  const ref = userCollection().doc(uid);
-  const now = new Date();
-  await ref.update({
-    ...payload,
-    updatedAt: now,
-    lastActiveAt: now,
+export const addExp = async (uid: string, amount: number, watchSeconds = 0): Promise<void> => {
+  const ref = userRef(uid);
+  await getDb().runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const current = snapshot.exists ? snapshot.data() as Partial<User> : { exp: 0, totalWatchSeconds: 0 };
+    const exp = (current.exp ?? 0) + amount;
+    transaction.set(ref, { exp, level: levelForExp(exp), totalWatchSeconds: (current.totalWatchSeconds ?? 0) + watchSeconds, updatedAt: FieldValue.serverTimestamp(), lastActiveAt: FieldValue.serverTimestamp() }, { merge: true });
   });
-  return getUserProfile(uid);
 };

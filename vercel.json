@@ -1,3 +1,15 @@
 {
-  "version": 2
+  "version": 2,
+  "rewrites": [
+    { "source": "/health", "destination": "/api/health" },
+    { "source": "/anime", "destination": "/api/anime/home" },
+    { "source": "/anime/:path*", "destination": "/api/anime/:path*" },
+    { "source": "/episode/:path*", "destination": "/api/episode/:path*" },
+    { "source": "/stream/:path*", "destination": "/api/stream/:path*" },
+    { "source": "/me", "destination": "/api/me" },
+    { "source": "/history/:path*", "destination": "/api/history/:path*" },
+    { "source": "/favorites/:path*", "destination": "/api/favorites/:path*" },
+    { "source": "/watch/:path*", "destination": "/api/watch/:path*" },
+    { "source": "/leaderboard", "destination": "/api/leaderboard" }
+  ]
 }

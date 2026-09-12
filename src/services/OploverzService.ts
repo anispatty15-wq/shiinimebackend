@@ -20,8 +20,8 @@ export class OploverzService {
   }
 
   private ttlFor(path: string) {
-    if (path === '/home') return env.CACHE_HOME_TTL_MS;
-    if (path === '/schedule') return env.CACHE_SCHEDULE_TTL_MS;
+    if (path === '/anime/home') return env.CACHE_HOME_TTL_MS;
+    if (path === '/anime/schedule') return env.CACHE_SCHEDULE_TTL_MS;
     if (path.includes('ongoing-anime') || path.includes('complete-anime') || path === '/anime/unlimited') return env.CACHE_COLLECTION_TTL_MS;
     if (path.startsWith('/anime/search/')) return env.CACHE_SEARCH_TTL_MS;
     if (path.startsWith('/anime/anime/')) return env.CACHE_DETAIL_TTL_MS;
@@ -80,8 +80,8 @@ export class OploverzService {
     return request;
   }
 
-  getHome() { return this.get('/home'); }
-  getSchedule() { return this.get('/schedule'); }
+  getHome() { return this.get('/anime/home'); }
+  getSchedule() { return this.get('/anime/schedule'); }
   getOngoing(page?: number) { return this.get('/anime/ongoing-anime', { page }); }
   getCompleted(page?: number) { return this.get('/anime/complete-anime', { page }); }
   getList(page?: number) { return this.get('/anime/unlimited', { page }); }

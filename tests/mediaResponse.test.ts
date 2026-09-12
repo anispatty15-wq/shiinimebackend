@@ -12,6 +12,19 @@ const providerEpisode = {
 };
 
 describe('normalized media response', () => {
+  it('maps the provider data envelope and dynamic quality/server list', async () => {
+    const result = await normalizeEpisodeResponse({
+      data: {
+        title: 'Episode 1',
+        server: { qualities: [{ title: '720p', serverList: [{ title: 'Server A', serverId: 'server-a' }] }] },
+        downloadUrl: { qualities: [{ title: '720p', urls: [{ title: 'Direct', url: 'https://files.example/video.mp4' }] }] }
+      }
+    });
+
+    expect(result.streams[0]).toMatchObject({ quality: '720p', serverId: 'server-a', url: null });
+    expect(result.downloads[0]).toMatchObject({ name: 'Direct', resolution: '720p', url: 'https://files.example/video.mp4' });
+  });
+
   it('preserves playable media types and groups streams as servers', async () => {
     const result = await normalizeEpisodeResponse(providerEpisode, async (url) => ({
       playable: true,

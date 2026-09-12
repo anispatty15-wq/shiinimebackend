@@ -13,7 +13,7 @@ export class OploverzService {
 
   constructor(client?: AxiosInstance) {
     this.client = client ?? axios.create({
-      baseURL: `${env.OPLOVERZ_BASE_URL.replace(/\/$/, '')}/anime/oploverz`,
+      baseURL: env.PROVIDER_BASE_URL.replace(/\/$/, ''),
       timeout: env.PROVIDER_TIMEOUT_MS,
       validateStatus: () => true
     });
@@ -22,10 +22,10 @@ export class OploverzService {
   private ttlFor(path: string) {
     if (path === '/home') return env.CACHE_HOME_TTL_MS;
     if (path === '/schedule') return env.CACHE_SCHEDULE_TTL_MS;
-    if (path === '/ongoing' || path === '/completed' || path === '/list') return env.CACHE_COLLECTION_TTL_MS;
-    if (path.startsWith('/search/')) return env.CACHE_SEARCH_TTL_MS;
-    if (path.startsWith('/anime/')) return env.CACHE_DETAIL_TTL_MS;
-    if (path.startsWith('/episode/')) return env.CACHE_EPISODE_TTL_MS;
+    if (path.includes('ongoing-anime') || path.includes('complete-anime') || path === '/anime/unlimited') return env.CACHE_COLLECTION_TTL_MS;
+    if (path.startsWith('/anime/search/')) return env.CACHE_SEARCH_TTL_MS;
+    if (path.startsWith('/anime/anime/')) return env.CACHE_DETAIL_TTL_MS;
+    if (path.startsWith('/anime/episode/')) return env.CACHE_EPISODE_TTL_MS;
     return 0;
   }
 
@@ -82,12 +82,16 @@ export class OploverzService {
 
   getHome() { return this.get('/home'); }
   getSchedule() { return this.get('/schedule'); }
-  getOngoing(page?: number) { return this.get('/ongoing', { page }); }
-  getCompleted(page?: number) { return this.get('/completed', { page }); }
-  getList(page?: number) { return this.get('/list', { page }); }
-  searchAnime(query: string, page?: number) { return this.get(`/search/${encodeURIComponent(query)}`, { page }); }
-  getAnimeDetail(slug: string) { return this.get(`/anime/${encodeURIComponent(slug)}`); }
-  getEpisode(slug: string) { return this.get(`/episode/${encodeURIComponent(slug)}`); }
+  getOngoing(page?: number) { return this.get('/anime/ongoing-anime', { page }); }
+  getCompleted(page?: number) { return this.get('/anime/complete-anime', { page }); }
+  getList(page?: number) { return this.get('/anime/unlimited', { page }); }
+  getGenres() { return this.get('/anime/genre'); }
+  getGenre(slug: string, page?: number) { return this.get(`/anime/genre/${encodeURIComponent(slug)}`, { page }); }
+  searchAnime(query: string, page?: number) { return this.get(`/anime/search/${encodeURIComponent(query)}`, { page }); }
+  getAnimeDetail(slug: string) { return this.get(`/anime/anime/${encodeURIComponent(slug)}`); }
+  getEpisode(slug: string) { return this.get(`/anime/episode/${encodeURIComponent(slug)}`); }
+  getBatch(slug: string) { return this.get(`/anime/batch/${encodeURIComponent(slug)}`); }
+  getServer(serverId: string) { return this.get(`/anime/server/${encodeURIComponent(serverId)}`); }
 
   async validateMediaUrl(url: string): Promise<MediaValidation> {
     const cached = this.mediaValidationCache.get(url);

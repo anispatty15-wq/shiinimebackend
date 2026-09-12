@@ -61,3 +61,13 @@ export interface NormalizedDownload {
   format: string | null;
   providerData: ProviderRecord;
 }
+
+export interface NormalizedServerResolution {
+  serverId: string;
+  url: string | null;
+  playable: boolean;
+  type: string | null;
+  mimeType: string | null;
+  error?: string;
+  providerData: ProviderRecord;
+}

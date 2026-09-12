@@ -15,18 +15,24 @@ Error: `{ "success": false, "error": { "code": "ERROR_CODE", "message": "..." } 
 | GET | `/health` | No | none |
 | GET | `/anime/home` | No | none |
 | GET | `/anime/schedule` | No | none |
-| GET | `/anime/ongoing` | No | optional `page` |
-| GET | `/anime/completed` | No | optional `page` |
-| GET | `/anime/list` | No | optional `page` |
+| GET | `/anime/ongoing-anime` | No | optional `page` |
+| GET | `/anime/complete-anime` | No | optional `page` |
+| GET | `/anime/unlimited` | No | none |
+| GET | `/anime/genre` | No | none |
+| GET | `/anime/genre/:slug` | No | optional `page` |
 | GET | `/anime/search/:query` | No | optional `page` |
-| GET | `/anime/:slug` | No | slug is URL-safe |
-| GET | `/episode/:slug` | No | slug is URL-safe |
+| GET | `/anime/anime/:slug` | No | slug is URL-safe |
+| GET | `/anime/episode/:slug` | No | slug is URL-safe |
+| GET | `/anime/batch/:slug` | No | slug is URL-safe |
+| GET | `/anime/server/:serverId` | No | server ID from episode response |
+
+Legacy aliases `/anime/ongoing`, `/anime/completed`, `/anime/list`, `/anime/:slug`, and `/episode/:slug` remain available for existing clients.
 
 Collection data contains normalized `items`, `schedule`, `pagination`, and `providerData`. Anime detail contains `anime` and `providerData`.
 
 ### Episode
 
-`GET /episode/:slug` returns:
+`GET /anime/episode/:slug` returns:
 
 ```json
 {
@@ -51,7 +57,9 @@ Collection data contains normalized `items`, `schedule`, `pagination`, and `prov
 }
 ```
 
-`server`, server ID, quality, stream resolution, format, MIME type, subtitle, audio, and type are `null` because the inspected provider did not provide them. URLs are passed through unchanged. The `providerData` property preserves the original object for forward compatibility.
+The provider response is read from its `data` envelope. Quality and server IDs are copied from `data.server.qualities[].serverList[]`; download entries are copied from `data.downloadUrl.qualities[].urls[]`. The `providerData` property preserves the original object for forward compatibility.
+
+`GET /anime/server/:serverId` resolves the provider URL and validates its content type. The currently verified provider returns embed/page URLs for the sampled server IDs, so these responses are returned as `playable: false` with an error such as `HTML_PLAYER_PAGE`. The backend never upgrades an embed URL into a direct video URL.
 
 The episode response also includes `servers`. Each provider stream is represented as one server-compatible entry so the Android client can use one stable shape without knowing provider internals:
 

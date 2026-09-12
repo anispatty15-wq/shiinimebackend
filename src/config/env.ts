@@ -5,7 +5,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default('0.0.0.0'),
-  OPLOVERZ_BASE_URL: z.string().url().default('https://www.sankavollerei.web.id'),
+  PROVIDER_BASE_URL: z.string().url().default(process.env.OPLOVERZ_BASE_URL ?? 'https://www.sankavollerei.web.id'),
   PROVIDER_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
   CACHE_HOME_TTL_MS: z.coerce.number().int().nonnegative().default(3 * 60 * 1000),

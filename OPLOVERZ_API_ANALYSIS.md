@@ -1,61 +1,57 @@
-# Oploverz API Analysis
+# Provider API Analysis
 
 Inspection dilakukan pada 11 September 2026 terhadap `https://www.sankavollerei.web.id` menggunakan HTTP request nyata. Tidak ada mock response yang dipakai.
 
+## Current provider contract
+
+The current API is `https://www.sankavollerei.web.id/` with endpoint paths under `/anime`. The older `/anime/oploverz` prefix and the old response fields (`anime_list`, `episode_title`, `streams`) are no longer used as the primary contract.
+
+The verified response envelope is `{ status, creator, data, pagination }`. Collection fields use `data.animeList`; detail uses `data.episodeList`; episode uses `data.server.qualities` and `data.downloadUrl.qualities`.
+
 ## Base URL
 
-`https://www.sankavollerei.web.id/anime/oploverz`
+`https://www.sankavollerei.web.id/`
 
 ## Endpoint
 
 | Provider endpoint | Observed response |
 | --- | --- |
-| `GET /home` | `{ status, creator, source, anime_list[] }` |
-| `GET /schedule` | `{ status, creator, source, schedule }` |
-| `GET /ongoing` | `{ status, creator, source, anime_list[], pagination }` |
-| `GET /completed` | `{ status, creator, source, anime_list[], pagination }` |
-| `GET /list` | `{ status, creator, source, anime_list[], pagination }` |
-| `GET /search/:query` | Collection response dengan `anime_list[]` dan `pagination` |
-| `GET /anime/:slug` | `{ status, creator, source, detail }` |
-| `GET /episode/:slug` | `{ status, creator, source, episode_title, streams[], downloads[] }` |
+| `GET /anime/home` | `{ status, creator, data: { ongoing, completed, ... } }` |
+| `GET /anime/schedule` | `{ status, creator, data: [{ day, animeList[] }] }` |
+| `GET /anime/ongoing-anime?page=1` | `{ status, creator, data: { animeList[], pagination } }` |
+| `GET /anime/complete-anime?page=1` | `{ status, creator, data: { animeList[], pagination } }` |
+| `GET /anime/genre` | `{ status, creator, data: { genreList[] } }` |
+| `GET /anime/genre/:slug?page=1` | Collection response with `data.animeList[]` and `data.pagination` |
+| `GET /anime/unlimited` | `{ status, creator, data: { list[] } }` |
+| `GET /anime/search/:query` | Collection response with `data.animeList[]` and `data.pagination` |
+| `GET /anime/anime/:slug` | `{ status, creator, data: { episodeList[], ... } }` |
+| `GET /anime/episode/:slug` | `{ status, creator, data: { server, downloadUrl, ... } }` |
+| `GET /anime/server/:serverId` | `{ status, creator, data: { url } }`; sampled URLs are embed pages |
 
 ## Collection Structure
 
-Item `anime_list` yang teramati memiliki `title`, `slug`, `poster`, `type`, `episode`, `status`, dan `oploverz_url`. Pada response list, field `slug` dapat bernilai literal `anime`; URL canonical pada `oploverz_url` memuat slug sebenarnya. Normalizer memakai slug URL canonical bila kondisi ini terjadi.
+Item `data.animeList` yang teramati memakai `title`, `poster`, `animeId`, `href`, dan `otakudesuUrl`. Normalizer memetakan `animeId` menjadi `slug`.
 
 `pagination` yang teramati memiliki `hasNext`, `hasPrev`, dan `currentPage`. Parameter `page=2` terobservasi mengubah `currentPage` menjadi `2`. Limit tidak diberikan oleh inspection.
 
-`/schedule` mengembalikan object keyed by day, misalnya `thursday`, berisi item dengan `title`, `slug`, dan `episode_info`.
+`/schedule` mengembalikan array hari dengan item `title`, `slug`, `url`, dan `poster`.
 
 ## Anime Detail
 
-`detail` memiliki:
+`data` pada detail memiliki:
 
 - `title`
 - `poster`
 - `synopsis`
-- `info`: `status`, `studio`, `duration`, `season`, `type`, `casts`, `posted_by`, `released_on`, `updated_on`
-- `genres[]`: `name`, `slug`, `url`
-- `episode_list[]`: `slug`, `title`, `episode`, `release_date`, `url`
+- `status`, `studios`, `duration`, `season`, `type`, `score`, `aired`
+- `genreList[]`: `title`, `genreId`, `href`
+- `episodeList[]`: `episodeId`, `title`, `eps`, `date`, `href`
 
 ## Episode, Stream, Server, dan Resolution
 
 Response nyata yang diambil:
 
-```json
-{
-  "episode_title": "One Piece Episode 001  REMASTERED",
-  "streams": [
-    { "name": "Main Stream", "url": "..." },
-    { "name": "Server 1 | sd]google-v2", "url": "..." }
-  ],
-  "downloads": [
-    { "name": "One Drive", "resolution": "DL", "url": "..." },
-    { "name": "Google Drive", "resolution": "DL", "url": "..." },
-    { "name": "Mite", "resolution": "DL", "url": "..." }
-  ]
-}
-```
+`data.server.qualities[]` contains the dynamic quality title and `serverList[]` contains the server title and `serverId`. `data.downloadUrl.qualities[]` contains the download quality, size, and provider URLs.
 
 Alur normalisasi:
 
@@ -71,24 +67,21 @@ name dan URL provider
 resolution hanya dari field provider
 ```
 
-Provider response yang diinspeksi **tidak menyediakan** field terpisah untuk server ID, quality, resolution stream, format, MIME type, subtitle, audio, atau type. Semua field tersebut: **NOT PROVIDED BY PROVIDER**. API internal mengembalikan `null` untuk field normalisasi yang tidak tersedia dan menyimpan object asli di `providerData`.
+Provider response menyediakan server ID dan quality, tetapi tidak menjamin direct media URL, MIME type, format, subtitle, atau audio. API internal memvalidasi URL server dan mengembalikan `playable: false` untuk embed/HTML.
 
-Download dipisahkan dari stream. Download yang teramati memiliki `resolution: "DL"`; itu tidak diperlakukan sebagai resolusi video stream. Tidak ada `360p`, `480p`, `720p`, atau `1080p` yang diberikan oleh response yang diinspeksi.
+Download dipisahkan dari stream dan quality diambil dari `downloadUrl.qualities[]`; URL download tetap tidak dianggap stream URL.
 
 ## Field Mapping
 
 | Provider | SHIINIME |
 | --- | --- |
 | `title` | `title` |
-| `slug` / canonical URL | `slug` |
+| `animeId` | `slug` |
 | `poster` | `poster` |
 | `episode` | `episode` / `number` |
-| `episode_list` | `episodes` |
-| `episode_title` | `episode.title` |
-| `streams[].name` | `streams[].name` |
-| `streams[].url` | `streams[].url` |
-| `downloads[].name` | `downloads[].name` |
-| `downloads[].resolution` | `downloads[].resolution` |
-| `downloads[].url` | `downloads[].url` |
+| `episodeList[]` | `episodes` |
+| `episodeId` | `episode.slug` |
+| `server.qualities[].serverList[]` | `streams[]` |
+| `downloadUrl.qualities[].urls[]` | `downloads[]` |
 
 Provider tidak mengirim query parameter selain pagination `page` yang terobservasi. Tidak ada field tambahan yang dikarang.

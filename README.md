@@ -28,7 +28,7 @@ Isi `.env` dengan Firebase service account values. Jangan commit `.env`.
 NODE_ENV=development
 PORT=3000
 HOST=0.0.0.0
-OPLOVERZ_BASE_URL=https://www.sankavollerei.web.id
+PROVIDER_BASE_URL=https://www.sankavollerei.web.id
 FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk-...@your-project.iam.gserviceaccount.com
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
